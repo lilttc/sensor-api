@@ -1,0 +1,68 @@
+# --------------------------------------------------
+# Python
+# --------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Packaging
+*.egg-info/
+dist/
+build/
+
+# --------------------------------------------------
+# Jupyter / IPython
+# --------------------------------------------------
+.ipynb_checkpoints/
+.profile_default/
+.ipython/
+
+# --------------------------------------------------
+# OS / Editor
+# --------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --------------------------------------------------
+# Logs
+# --------------------------------------------------
+*.log
+
+# --------------------------------------------------
+# Data & outputs (important for your assignment)
+# --------------------------------------------------
+data/raw/
+data/outputs/
+outputs/
+*.csv
+*.parquet
+
+# Keep directory structure if needed
+!data/.gitkeep
+!data/raw/.gitkeep
+!data/outputs/.gitkeep
+
+# --------------------------------------------------
+# Tests / coverage
+# --------------------------------------------------
+.coverage
+htmlcov/
+.pytest_cache/
+
+# --------------------------------------------------
+# Environment variables / secrets
+# --------------------------------------------------
+.env
+.env.*
