@@ -1,28 +1,36 @@
 """
 ingest.py - End-to-end ingestion entry point for meteo JSON data.
 
-This module orchestrates the ingestion pipeline by:
+This module orchestrates ingestion by:
 - Discovering meteo JSON files on disk
-- Parsing each file into one or more structured records
-- Aggregating all records into a single pandas DataFrame
-- Optionally writing the result to disk for inspection
+- Parsing each file into one or more *wide* record dict(s)
+- Converting wide records into *long* Measurement rows
+- Upserting rows into a persistent SQLite database (via SQLModel/SQLAlchemy)
 
 It is intentionally thin and delegates:
 - file discovery → loader.py
-- parsing & normalization → parser.py
+- parsing → parser.py
+- persistence → db/*
 """
-from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterable, List, Set
 
 import pandas as pd
+from sqlmodel import Session
 
 from .loader import iter_meteo_files
 from .parser import parse_meteo_json_file
+from .transform import wide_record_to_measurements
+
+from src.db.models import Measurement
+from src.db.repo import bulk_upsert_measurements, ensure_indexes
+from src.db.session import engine, init_db
 
 logger = logging.getLogger(__name__)
+
+META_KEYS: Set[str] = {"ts", "pt", "sensor_id", "month", "day", "source_file"}
 
 
 def configure_logging(*, level: str = "INFO", log_file: Path | None = None) -> None:
@@ -49,78 +57,72 @@ def configure_logging(*, level: str = "INFO", log_file: Path | None = None) -> N
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     )
 
-
-def run_ingestion(data_root: Path) -> pd.DataFrame:
+def run_ingestion_to_db(data_root: Path) -> None:
     """
-    Run ingestion over a directory of meteo JSON files.
+    Run ingestion over a directory of meteo JSON files and persist into SQLite.
 
     Steps:
-    1. Discover meteo JSON files under `data_root`
-    2. Parse each file into record dict(s)
-    3. Aggregate records into a DataFrame
-    4. Normalize `ts` to timezone-aware UTC datetime if present
+    1. Initialize DB tables
+    2. Ensure indexes/unique constraints exist
+    3. Discover and parse meteo JSON files
+    4. Convert parsed records (wide) to long Measurement rows
+    5. Bulk upsert into DB
 
     Parameters
     ----------
     data_root : Path
         Root directory containing meteo data.
-
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame containing all successfully parsed records.
     """
     data_root = data_root.resolve()
     if not data_root.exists():
         raise FileNotFoundError(f"data_root does not exist: {data_root}")
 
-    all_records: List[Dict[str, Any]] = []
-    failures = 0
-    processed = 0
+    logger.info("Starting DB ingestion. data_root=%s", data_root)
 
-    logger.info("Starting ingestion. data_root=%s", data_root)
+    init_db()
+    with Session(engine) as session:
+        ensure_indexes(session)
 
-    for meteo_file in iter_meteo_files(data_root):
-        processed += 1
-        logger.debug(
-            "Processing file=%s sensor_id=%s month=%s day=%s",
-            meteo_file.path,
-            meteo_file.sensor_id,
-            meteo_file.month,
-            meteo_file.day,
-        )
+        processed_files = 0
+        failures = 0
+        attempted_rows = 0
 
-        try:
-            records = parse_meteo_json_file(
+        for meteo_file in iter_meteo_files(data_root):
+            processed_files += 1
+            logger.debug(
+                "Processing file=%s sensor_id=%s month=%s day=%s",
                 meteo_file.path,
-                sensor_id=meteo_file.sensor_id,
-                month=meteo_file.month,
-                day=meteo_file.day,
+                meteo_file.sensor_id,
+                meteo_file.month,
+                meteo_file.day,
             )
 
-            if not isinstance(records, list):
-                raise TypeError(f"Parser should return list[dict], got {type(records)}")
+            try:
+                records = parse_meteo_json_file(
+                    meteo_file.path,
+                    sensor_id=meteo_file.sensor_id,
+                    month=meteo_file.month,
+                    day=meteo_file.day,
+                )
+                if not isinstance(records, list):
+                    raise TypeError(f"Parser should return list[dict], got {type(records)}")
 
-            all_records.extend(records)
+                measurements: List[Measurement] = []
+                for rec in records:
+                    measurements.extend(list(wide_record_to_measurements(rec)))
 
-        except Exception:
-            failures += 1
-            logger.exception("Failed to parse file=%s", meteo_file.path)
+                attempted_rows += bulk_upsert_measurements(session, measurements)
 
-    df = pd.DataFrame(all_records)
+            except Exception:
+                failures += 1
+                logger.exception("Failed to ingest file=%s", meteo_file.path)
 
-    # Normalize timestamp if present
-    if "ts" in df.columns:
-        df["ts"] = pd.to_datetime(df["ts"], errors="coerce", utc=True)
-
-    logger.info(
-        "Ingestion finished. processed=%d parsed_records=%d failures=%d df_shape=%s",
-        processed,
-        len(all_records),
-        failures,
-        df.shape,
-    )
-    return df
+        logger.info(
+            "DB ingestion finished. files_processed=%d failures=%d rows_attempted=%d",
+            processed_files,
+            failures,
+            attempted_rows,
+        )
 
 
 def main() -> None:
@@ -128,8 +130,7 @@ def main() -> None:
     CLI entry point for running ingestion locally.
 
     - Configures logging
-    - Runs ingestion
-    - Writes the resulting DataFrame to CSV
+    - Runs ingestion into SQLite DB
     """
     configure_logging(level="INFO", log_file=Path("data/outputs/ingest.log"))
 
@@ -137,17 +138,7 @@ def main() -> None:
     logger.info("CWD=%s", Path.cwd())
     logger.info("Using data_root=%s exists=%s", data_root.resolve(), data_root.exists())
 
-    df = run_ingestion(data_root)
-
-    logger.info("Preview head:\n%s", df.head())
-    logger.info("DataFrame shape: %s", df.shape)
-
-    out_dir = Path("data/outputs")
-    out_dir.mkdir(exist_ok=True)
-    out_path = out_dir / "meteo_may.csv"
-    df.to_csv(out_path, index=False)
-
-    logger.info("Wrote %s", out_path.resolve())
+    run_ingestion_to_db(data_root)
 
 
 if __name__ == "__main__":

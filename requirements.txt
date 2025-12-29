@@ -1,12 +1,17 @@
+# Core data
 pandas>=2.0
 numpy>=1.24
 
-# For API
+# API
 fastapi>=0.110
 uvicorn[standard]>=0.27
 
-# For database
+# Database / ORM
 sqlalchemy>=2.0
+sqlmodel>=0.0.16
 
+# Utilities
 python-dateutil>=2.8
+
+# Testing
 pytest>=8.0
