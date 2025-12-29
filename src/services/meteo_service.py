@@ -93,7 +93,7 @@ def get_24h_series(
 ) -> Dict[str, Any]:
     """24-hour time series with 15-minute resolution (mean per bucket)."""
     end = _resolve_end(session, sensor_id=sensor_id, end=end)
-    start = end - timedelta(hours=24)
+    start = end - timedelta(hours=25)
 
     df = get_window(session, sensor_id=sensor_id, start=start, end=end, parameters=parameters)
     df_resampled = resample_per_parameter(df, freq="15min", how="mean")
@@ -116,7 +116,7 @@ def get_24h_average(
 ) -> Dict[str, Any]:
     """24-hour averages per parameter."""
     end = _resolve_end(session, sensor_id=sensor_id, end=end)
-    start = end - timedelta(hours=24)
+    start = end - timedelta(hours=25)
 
     df = get_window(session, sensor_id=sensor_id, start=start, end=end, parameters=parameters)
     return {
