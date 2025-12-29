@@ -1,12 +1,12 @@
 """
-session.py — Database engine and session management.
+session.py - Database engine and session management.
 
 This module is responsible for:
 - configuring the SQLite database connection
 - initializing database tables
 - providing SQLModel Session objects to the application
 
-It is intentionally small and centralized so that:
+It is intentionally small and centralised so that:
 - the DB location can be changed via environment variable
 - engine configuration is defined in one place
 - FastAPI dependencies can reuse the same session logic

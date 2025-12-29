@@ -20,25 +20,19 @@ def measurements_to_df(measurements: Iterable[Measurement]) -> pd.DataFrame:
     """
     Convert Measurement rows to a normalized DataFrame.
 
-    Output columns:
-    - ts: datetime64[ns, UTC]
-    - parameter: str
-    - value: float
-
-    Notes
-    -----
-    - Rows with value=None are dropped.
-    - Timestamps are coerced to UTC.
+    Returns a DataFrame with columns: ts, parameter, value.
+    If there are no usable rows, returns an empty DataFrame *with those columns*.
     """
     rows = [
         {"ts": m.ts, "parameter": m.parameter, "value": m.value}
         for m in measurements
         if m.value is not None
     ]
-    df = pd.DataFrame(rows)
-    if df.empty:
-        return df
 
+    if not rows:
+        return pd.DataFrame(columns=["ts", "parameter", "value"])
+
+    df = pd.DataFrame(rows)
     df["ts"] = pd.to_datetime(df["ts"], utc=True, errors="coerce")
     df = df.dropna(subset=["ts", "parameter", "value"])
     return df
@@ -68,7 +62,7 @@ def resample_per_parameter(
         Resampled DataFrame with columns: ts, parameter, value.
     """
     if df.empty:
-        return df
+        return pd.DataFrame(columns=["ts", "parameter", "value"])
 
     agg = "mean" if how == "mean" else "last"
 

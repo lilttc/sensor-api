@@ -18,8 +18,6 @@ filtering reliable, this module normalizes datetime boundaries into the
 same sortable string format when querying time windows.
 """
 
-from __future__ import annotations
-
 from datetime import datetime, timezone
 from typing import Iterable, Optional
 
@@ -99,7 +97,7 @@ def ensure_indexes(session: Session) -> None:
     """
     Ensure required indexes and uniqueness constraints exist in the database.
 
-    This function is idempotent and safe to call multiple times.
+    This function is safe to call multiple times.
     SQLite supports `CREATE INDEX IF NOT EXISTS`, so no checks are needed.
 
     Indexes created:

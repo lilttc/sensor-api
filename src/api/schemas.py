@@ -8,8 +8,6 @@ API can evolve independently of storage details.
 Timestamps are represented as timezone-aware datetimes (UTC recommended).
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 from typing import Dict, List, Optional
 

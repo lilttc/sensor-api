@@ -41,7 +41,7 @@ Thumbs.db
 *.log
 
 # --------------------------------------------------
-# Data & outputs (important for your assignment)
+# Data & outputs
 # --------------------------------------------------
 data/raw/
 data/outputs/

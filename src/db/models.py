@@ -1,5 +1,5 @@
 """
-models.py — Database models for meteo measurements.
+models.py - Database models for meteo measurements.
 
 This module defines the persistent storage schema using SQLModel.
 It contains only database-facing models and no business logic.
