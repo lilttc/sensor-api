@@ -6,6 +6,7 @@ This provides:
 - /ingest/batch : bulk ingest raw meteo payloads via HTTP
 """
 
+import os
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -38,15 +39,25 @@ def ingest_meteo(
     - This is designed for local/demo usage in the assignment.
     - In production, you'd ingest via HTTP payloads, file upload, object storage, or a message queue.
     """
+    # Guardrail: only allow ingesting from within DATA_ROOT (default: data/raw)
+    base_root = Path(os.getenv("DATA_ROOT", "data/raw")).resolve()
+    requested_root = Path(data_root).resolve()
+
+    if requested_root != base_root and base_root not in requested_root.parents:
+        raise HTTPException(
+            status_code=400,
+            detail=f"data_root must be under {base_root}. Got: {requested_root}",
+        )
+
     try:
-        stats = ingest_meteo_dir_to_db(Path(data_root), limit_files=limit_files)
+        stats = ingest_meteo_dir_to_db(requested_root, limit_files=limit_files)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ingestion failed: {e}")
 
     return {
-        "data_root": str(Path(data_root).resolve()),
+        "data_root": str(requested_root),
         "processed_files": stats.processed_files,
         "parsed_records": stats.parsed_records,
         "attempted_rows": stats.attempted_rows,
