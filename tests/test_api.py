@@ -54,3 +54,11 @@ def test_ingest_batch_endpoint(client):
     data = r2.json()
     assert data["values"]["external_temperature_c"] == 12.0
     assert data["values"]["wind_speed_unmuted_m_s"] == 4.2
+
+
+def test_ingest_meteo_rejects_outside_data_root(client):
+    resp = client.post("/ingest/meteo", params={"data_root": "/etc"})
+    assert resp.status_code == 400
+    body = resp.json()
+    assert "data_root must be under" in body["detail"]
+    
