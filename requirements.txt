@@ -12,6 +12,7 @@ sqlmodel>=0.0.16
 
 # Utilities
 python-dateutil>=2.8
+python-dotenv
 
 # Testing
 httpx>=0.23

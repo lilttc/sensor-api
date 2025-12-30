@@ -18,6 +18,9 @@ from typing import Iterator
 
 from sqlmodel import Session, SQLModel, create_engine
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # ---------------------------------------------------------------------------
 # Database configuration
 # ---------------------------------------------------------------------------
