@@ -12,7 +12,7 @@ It:
 - upserts them into SQLite in batches
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -27,12 +27,18 @@ from src.ingestion.transform import wide_record_to_measurements
 
 
 @dataclass(frozen=True)
+class IngestFailure:
+    file: str
+    error: str
+
+
+@dataclass(frozen=True)
 class IngestStats:
-    """Summary stats returned by bulk ingestion."""
-    processed_files: int
-    parsed_records: int
-    attempted_rows: int
-    failures: int
+    processed_files: int = 0
+    parsed_records: int = 0
+    attempted_rows: int = 0
+    failures: int = 0
+    failure_examples: list[IngestFailure] = field(default_factory=list)
 
 
 def ingest_meteo_dir_to_db(
@@ -40,6 +46,7 @@ def ingest_meteo_dir_to_db(
     *,
     batch_size: int = 5000,
     limit_files: Optional[int] = None,
+    max_failure_examples: int = 20,
 ) -> IngestStats:
     """
     Ingest all meteo JSON files under `data_root` into the SQLite database.
@@ -52,6 +59,8 @@ def ingest_meteo_dir_to_db(
         Number of Measurement rows to upsert per batch.
     limit_files : Optional[int]
         Optional safety limit for number of files to ingest.
+    max_failure_examples : int
+        Maximum number of failure examples to collect and return.
 
     Returns
     -------
@@ -67,6 +76,7 @@ def ingest_meteo_dir_to_db(
     parsed_records = 0
     attempted_rows = 0
     failures = 0
+    failure_examples: list[IngestFailure] = []
 
     with Session(engine) as session:
         ensure_indexes(session)
@@ -85,15 +95,17 @@ def ingest_meteo_dir_to_db(
                     month=mf.month,
                     day=mf.day,
                 )
-                # parser returns list[dict]
                 parsed_records += len(records)
 
                 for r in records:
+                    # wide_record_to_measurements may return a generator -> list() for safety
                     batch.extend(
-                        wide_record_to_measurements(
-                            r,
-                            sensor_id=r["sensor_id"],
-                            source_file=r.get("source_file"),
+                        list(
+                            wide_record_to_measurements(
+                                r,
+                                sensor_id=r["sensor_id"],
+                                source_file=r.get("source_file"),
+                            )
                         )
                     )
 
@@ -101,9 +113,13 @@ def ingest_meteo_dir_to_db(
                     attempted_rows += bulk_upsert_measurements(session, batch)
                     batch.clear()
 
-            except Exception:
+            except Exception as e:
                 failures += 1
-                # swallow and continue — ingestion endpoint should be resilient
+                if len(failure_examples) < max_failure_examples:
+                    failure_examples.append(
+                        IngestFailure(file=mf.path.name, error=str(e))
+                    )
+                # swallow and continue — ingestion should be resilient
                 continue
 
         if batch:
@@ -115,4 +131,5 @@ def ingest_meteo_dir_to_db(
         parsed_records=parsed_records,
         attempted_rows=attempted_rows,
         failures=failures,
+        failure_examples=failure_examples,
     )

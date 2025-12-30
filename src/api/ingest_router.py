@@ -62,6 +62,7 @@ def ingest_meteo(
         "parsed_records": stats.parsed_records,
         "attempted_rows": stats.attempted_rows,
         "failures": stats.failures,
+        "failure_examples": [{"file": f.file, "error": f.error} for f in stats.failure_examples],
     }
 
 
