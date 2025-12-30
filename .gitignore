@@ -45,7 +45,6 @@ Thumbs.db
 # --------------------------------------------------
 # Local SQLite database
 data/app.db
-data/raw/
 data/outputs/
 outputs/
 *.csv
