@@ -32,6 +32,7 @@ Built for the [**Source.ag](http://source.ag/) Sensor Measurements API** assignm
 ## Project structure
 
 ```markdown
+
 src/
 api/
 [main.py](http://main.py/) # FastAPI app, startup DB init, router registration
@@ -50,6 +51,7 @@ ingest_to_db.py # bulk ingest directory -> SQLite (batch upsert)
 services/
 meteo_service.py # time window semantics + response shaping
 [aggregations.py](http://aggregations.py/) # pandas utilities: resample + averages
+
 ```
 
 ---

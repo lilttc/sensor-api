@@ -14,4 +14,5 @@ sqlmodel>=0.0.16
 python-dateutil>=2.8
 
 # Testing
+httpx>=0.23
 pytest>=8.0
