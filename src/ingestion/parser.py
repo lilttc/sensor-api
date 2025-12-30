@@ -16,8 +16,8 @@ Key behaviors:
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Tuple
-
+from typing import Any, Dict, Iterable, List, Mapping, Tuple, Optional
+from datetime import datetime
 
 VARIABLE_COL = "Variable"
 VALUE_COL = "Value"
@@ -73,38 +73,59 @@ def _flatten_dict_values(record: Mapping[str, Any]) -> Dict[str, Any]:
 def _load_meteo_json(path: Path) -> Dict[str, Any]:
     """
     Load and return the raw JSON object for a meteo file.
-
-    Parameters
-    ----------
-    path : Path
-        File path to the JSON file.
-
-    Returns
-    -------
-    Dict[str, Any]
-        Parsed JSON object.
     """
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _extract_ts(data: Mapping[str, Any], *, path: Path) -> str:
+    """
+    Extract and validate the top-level timestamp ("ts").
+    Returns an ISO-8601 string.
+    """
+    ts = data.get("ts")
+    if ts is None:
+        raise ValueError(f"Missing 'ts' in {path}")
+
+    if isinstance(ts, datetime):
+        return ts.isoformat()
+
+    if not isinstance(ts, str) or ts.strip() == "":
+        raise ValueError(f"Invalid 'ts' in {path}: {ts}")
+
+    # Light validation: must be parseable ISO-8601 (accept Z)
+    try:
+        datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except Exception as e:
+        raise ValueError(f"Unparseable 'ts' in {path}: {ts}") from e
+
+    return ts
+
+
+def _extract_pt(data: Mapping[str, Any], *, path: Path) -> int:
+    """
+    Extract and validate the point index ("pt").
+    """
+    pt = data.get("pt")
+    if pt is None:
+        # In many cases it's always present, but defaulting here makes HTTP ingestion friendlier.
+        return 0
+
+    if isinstance(pt, bool):
+        raise ValueError(f"Invalid 'pt' in {path}: {pt}")
+
+    if isinstance(pt, int):
+        return pt
+
+    # Some payloads may provide pt as string
+    if isinstance(pt, str) and pt.strip().isdigit():
+        return int(pt.strip())
+
+    raise ValueError(f"Invalid 'pt' in {path}: {pt}")
 
 
 def _extract_rows(data: Mapping[str, Any], *, path: Path) -> List[List[Any]]:
     """
     Extract and validate the `rows` array from a meteo JSON object.
-
-    Expected shape:
-        {
-          ...,
-          "rows": [
-            ["Variable", "Value"],
-            ["external_temperature_c", 11.4],
-            ...
-          ]
-        }
-
-    Raises
-    ------
-    ValueError
-        If `rows` is missing/empty or the header is malformed.
     """
     rows = data.get("rows")
     if not rows or not isinstance(rows, list) or len(rows) < 2:
@@ -120,15 +141,6 @@ def _extract_rows(data: Mapping[str, Any], *, path: Path) -> List[List[Any]]:
 def _parse_header(header: List[Any], *, path: Path) -> Tuple[int, int]:
     """
     Identify the indices of the Variable and Value columns in the header.
-
-    Returns
-    -------
-    (variable_index, value_index)
-
-    Raises
-    ------
-    ValueError
-        If required columns are missing.
     """
     header_str = [str(c).strip() for c in header]
     try:
@@ -144,10 +156,6 @@ def _parse_header(header: List[Any], *, path: Path) -> Tuple[int, int]:
 def _dedupe_last_non_missing(pairs: Iterable[Tuple[str, Any]]) -> Dict[str, Any]:
     """
     Deduplicate (variable, value) pairs, keeping the last non-missing value per variable.
-
-    Behavior per variable:
-    - If at least one non-missing value appears, keep the last non-missing one.
-    - Otherwise (all missing), keep the last seen missing value.
     """
     out: Dict[str, Any] = {}
     last_missing: Dict[str, Any] = {}
@@ -165,46 +173,14 @@ def _dedupe_last_non_missing(pairs: Iterable[Tuple[str, Any]]) -> Dict[str, Any]
     return out
 
 
-def parse_meteo_json_file(
-    path: Path,
-    *,
-    sensor_id: str,
-    month: str,
-    day: str,
-) -> List[Dict[str, Any]]:
+def _rows_to_record(rows: List[List[Any]], *, path: Path) -> Dict[str, Any]:
     """
-    Parse a single meteo-XXXX.json file into one wide record dict (pure Python).
-
-    In addition to `rows`, the file contains:
-      - ts: ISO-8601 timestamp string (timezone-aware)
-      - pt: point index (often 0 in sample data)
-
-    Input JSON expected:
-        {
-          "ts": "2021-05-01T02:02:50+02:00",
-          "pt": 0,
-          "rows": [["Variable","Value"], ["external_temperature_c", 11.4], ...]
-        }
-
-    Processing steps:
-    1. Load JSON, extract file-level metadata (ts, pt)
-    2. Validate rows/header and extract (variable, value) pairs
-    3. Deduplicate per variable (keep last non-missing; otherwise last missing)
-    4. Flatten enum-like dict values into scalar + namespaced metadata columns
-    5. Attach metadata keys: ts, pt, sensor_id, month, day, source_file
-
-    Returns
-    -------
-    List[Dict[str, Any]]
-        A list of parsed record(s). For the current data format, this list
-        contains exactly one record per file.
+    Convert rows into a wide record dict:
+      - validate header
+      - build (var, val) pairs
+      - dedupe
+      - flatten dict values
     """
-    data = _load_meteo_json(path)
-
-    ts = data.get("ts")
-    pt = data.get("pt")
-
-    rows = _extract_rows(data, path=path)
     header = rows[0]
     var_i, val_i = _parse_header(header, path=path)
 
@@ -224,6 +200,28 @@ def parse_meteo_json_file(
 
     record = _dedupe_last_non_missing(pairs)
     record = _flatten_dict_values(record)
+    return record
+
+
+def parse_meteo_json_file(
+    path: Path,
+    *,
+    sensor_id: str,
+    month: str,
+    day: str,
+) -> List[Dict[str, Any]]:
+    """
+    Parse a single meteo-XXXX.json file into one wide record dict (pure Python).
+
+    Returns a list with exactly one record for the current data format.
+    """
+    data = _load_meteo_json(path)
+
+    ts = _extract_ts(data, path=path)
+    pt = _extract_pt(data, path=path)
+
+    rows = _extract_rows(data, path=path)
+    record = _rows_to_record(rows, path=path)
 
     record.update(
         {
@@ -233,6 +231,56 @@ def parse_meteo_json_file(
             "month": month,
             "day": day,
             "source_file": path.name,
+        }
+    )
+
+    return [record]
+
+
+def parse_meteo_payload(
+    data: Mapping[str, Any],
+    *,
+    sensor_id: str,
+    source_file: str = "<http>",
+    month: Optional[str] = None,
+    day: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Parse an in-memory meteo JSON payload (already loaded dict) into one wide record.
+
+    This mirrors parse_meteo_json_file() but is intended for HTTP ingestion.
+
+    If month/day are not provided, they are derived from ts where possible.
+    """
+    path = Path(source_file)
+
+    ts = _extract_ts(data, path=path)
+    pt = _extract_pt(data, path=path)
+
+    # Derive month/day from ts if not supplied
+    if month is None or day is None:
+        try:
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            if month is None:
+                month = f"{dt.month:02d}"
+            if day is None:
+                day = f"{dt.day:02d}"
+        except Exception:
+            # Fall back to sentinel values; ingestion can still proceed
+            month = month or "unknown"
+            day = day or "unknown"
+
+    rows = _extract_rows(data, path=path)
+    record = _rows_to_record(rows, path=path)
+
+    record.update(
+        {
+            "ts": ts,
+            "pt": pt,
+            "sensor_id": sensor_id,
+            "month": month,
+            "day": day,
+            "source_file": source_file,
         }
     )
 

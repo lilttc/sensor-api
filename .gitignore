@@ -48,7 +48,8 @@ data/outputs/
 outputs/
 *.csv
 *.parquet
-
+# Local SQLite database
+data/app.db
 # Keep directory structure if needed
 !data/.gitkeep
 !data/raw/.gitkeep
