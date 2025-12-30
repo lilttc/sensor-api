@@ -64,6 +64,14 @@ meteo_service.py # time window semantics + response shaping
 
 ---
 
+### Quick start
+
+```bash
+cp .env.example .env
+pip install -r requirements.txt
+./run.sh
+```
+
 ## Setup
 
 ```bash
@@ -85,6 +93,12 @@ Example:
 ```bash
 export DB_PATH="$(pwd)/data/app.db"
 export SQL_ECHO=0
+```
+
+Copy the example file and adjust if needed:
+
+```bash
+cp .env.example .env
 ```
 
 ## Run the API
