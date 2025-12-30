@@ -1,8 +1,9 @@
 # Sensor Measurements API (Meteo)
 
-Backend service that ingests greenhouse **meteo (external weather)** sensor snapshots from JSON files, stores them in **SQLite**, and exposes aggregated views via a **FastAPI** API.
+Backend service that ingests greenhouse **meteo (external weather)** sensor snapshots from JSON data,
+stores them in **SQLite**, and exposes aggregated views via a **FastAPI** API.
 
-Built for the [**Source.ag](http://source.ag/) Sensor Measurements API** assignment.
+Built for the **Source.ag Sensor Measurements API assignment**.
 
 ---
 
@@ -18,107 +19,149 @@ Built for the [**Source.ag](http://source.ag/) Sensor Measurements API** assignm
 
 ### Bulk ingestion
 
-- **POST `/ingest/meteo`**: ingest all meteo JSON files under a directory into SQLite
+- **POST `/ingest/batch`**: ingest raw meteo payloads via HTTP (file-like JSON)
+- **POST `/ingest/meteo`**: ingest meteo JSON files from a directory on disk (local/demo helper)
 
 ### Data handling
 
 - Parses raw JSON `rows` into a normalized long format: **(sensor_id, ts, parameter, value, pt)**
 - Handles duplicates via **unique index + UPSERT**
-- Handles missing/malformed rows gracefully (skips invalid values/rows)
+- Skips invalid / malformed values gracefully
 - Stores data persistently in SQLite (`data/app.db`) so it survives restarts
+
+---
+
+## Measurement schema
+
+Each stored measurement row contains:
+
+- `sensor_id` (string)
+- `ts` (timestamp; stored consistently and used for time-window queries)
+- `parameter` (string)
+- `value` (float)
+- `pt` (int point index)
+- `source_file` (string, optional)
+
+Uniqueness is enforced on:
+
+- `UNIQUE(sensor_id, ts, parameter, pt)`
+
+This enables idempotent re-ingestion via UPSERT.
 
 ---
 
 ## Project structure
 
-```markdown
-
+```
 src/
-api/
-[main.py](http://main.py/) # FastAPI app, startup DB init, router registration
-[router.py](http://router.py/) # /weather endpoints
-ingest_router.py # /ingest endpoints
-[schemas.py](http://schemas.py/) # Pydantic response models
-db/
-[models.py](http://models.py/) # SQLModel Measurement table
-[repo.py](http://repo.py/) # DB queries + upsert + indexes
-[session.py](http://session.py/) # engine/session/init_db
-ingestion/
-[loader.py](http://loader.py/) # discover files + metadata extraction
-[parser.py](http://parser.py/) # parse meteo JSON -> record dicts (ts, pt, values)
-ingest_to_db.py # bulk ingest directory -> SQLite (batch upsert)
-[transform.py](http://transform.py/) # record -> Measurement rows (long format)
-services/
-meteo_service.py # time window semantics + response shaping
-[aggregations.py](http://aggregations.py/) # pandas utilities: resample + averages
-
+  api/
+    main.py            # FastAPI app, router registration
+    router.py          # /weather endpoints
+    ingest_router.py   # /ingest endpoints
+    schemas.py         # Pydantic response models
+  db/
+    models.py          # SQLModel Measurement table
+    repo.py            # DB queries + upsert + indexes
+    session.py         # engine / session / init_db
+  ingestion/
+    loader.py          # discover files + metadata extraction
+    parser.py          # parse meteo JSON -> record dicts (ts, pt, values)
+    transform.py       # record -> Measurement rows (long format)
+    ingest_to_db.py    # bulk ingest directory -> SQLite (batch upsert)
+  services/
+    meteo_service.py   # time window semantics + response shaping
+    aggregations.py    # pandas utilities: resample + averages
+tests/
 ```
 
 ---
 
 ## Requirements
 
-- Python **3.12+** recommended (assignment requirement)
-- SQLite (bundled)
+- Python **3.12+** recommended
+- SQLite (bundled with Python)
 - FastAPI + SQLModel
 
 ---
 
-### Quick start
+## Quick start (local)
 
 ```bash
 cp .env.example .env
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ./run.sh
 ```
 
-## Setup
+Swagger UI:
+- http://127.0.0.1:8000/docs
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-
-pip install -r requirements.txt
-```
+---
 
 ## Environment variables
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `DB_PATH` | `data/app.db` | SQLite file path |
-| `SQL_ECHO` | `0` | Set to `1` to enable SQLAlchemy SQL logging |
+| Variable     | Default        | Description |
+|--------------|----------------|-------------|
+| `DB_PATH`    | `data/app.db`  | SQLite database file path |
+| `DATA_ROOT`  | `data/raw`     | Allowed root directory for disk ingestion |
+| `SQL_ECHO`   | `0`            | Set to `1` to enable SQLAlchemy SQL logging |
+| `LOG_LEVEL`  | `INFO`         | Application log level |
 
-Example:
+---
 
-```bash
-export DB_PATH="$(pwd)/data/app.db"
-export SQL_ECHO=0
-```
+## Run with Docker
 
-Copy the example file and adjust if needed:
+Docker support is provided for easy evaluation.
 
-```bash
-cp .env.example .env
-```
-
-## Run the API
+### Option A: Docker build & run (works without docker-compose)
 
 ```bash
-uvicorn src.api.main:app --reload
+docker build -t source-ag-assignment:latest .
+
+docker run --rm -p 8000:8000 \
+  -e DB_PATH=./data/app.db \
+  -e DATA_ROOT=./data/raw \
+  -v "$(pwd)/data:/app/data" \
+  source-ag-assignment:latest
 ```
 
-Open :
+Then open:
+- http://127.0.0.1:8000/docs
 
-- Swagger UI: http://127.0.0.1:8000/docs
+### Option B: Docker Compose v2 (if available)
+
+```bash
+docker compose up --build
+```
 
 ---
 
 ## Bulk ingest data
 
-### Option A: ingest via API endpoint (recommended)
+### Option A: ingest raw payloads via HTTP (recommended)
 
 ```bash
-curl -X POST "<http://127.0.0.1:8000/ingest/meteo?data_root=data/raw/may>"
+curl -X POST "http://127.0.0.1:8000/ingest/batch" \
+  -H "Content-Type: application/json" \
+  -d '[
+    {
+      "sensor_id": "S1",
+      "ts": "2021-05-03T18:57:51+02:00",
+      "pt": 0,
+      "rows": [
+        ["Variable", "Value"],
+        ["external_temperature_c", 12.0],
+        ["wind_speed_unmuted_m_s", 4.2]
+      ]
+    }
+  ]'
+```
+
+### Option B: ingest sample dataset from disk (local/demo helper)
+
+```bash
+curl -X POST "http://127.0.0.1:8000/ingest/meteo?data_root=data/raw/may"
 ```
 
 Example response:
@@ -133,13 +176,8 @@ Example response:
 }
 ```
 
-### Option B: ingest via CLI (local/dev)
-
-```bash
-python -m src.ingestion.ingest_to_db
-```
-
-(Adjust if your local entrypoint differs.)
+> Note: for safety, `data_root` must be **under `DATA_ROOT`** (default: `data/raw`).
+> Paths outside this directory are rejected.
 
 ---
 
@@ -148,38 +186,59 @@ python -m src.ingestion.ingest_to_db
 ### Current values
 
 ```bash
-curl "<http://127.0.0.1:8000/weather/current?sensor_id=0152>"
+curl "http://127.0.0.1:8000/weather/current?sensor_id=0152"
 ```
 
-### 24h averages (use a non-zero parameter like temperature)
+### 24h averages
 
 ```bash
-curl "<http://127.0.0.1:8000/weather/24h/avg?sensor_id=0152&parameters=external_temperature_c>"
+curl "http://127.0.0.1:8000/weather/24h/avg?sensor_id=0152&parameters=external_temperature_c"
 ```
 
-### 24h series (multiple parameters must be repeated)
+### 24h series (repeat parameters)
 
 ```bash
-curl "<http://127.0.0.1:8000/weather/24h/series?sensor_id=0152&parameters=external_temperature_c&parameters=relative_humidity_perc>"
+curl "http://127.0.0.1:8000/weather/24h/series?sensor_id=0152&parameters=external_temperature_c&parameters=relative_humidity_perc"
 ```
 
 ### 7d averages
 
 ```bash
-curl "<http://127.0.0.1:8000/weather/7d/avg?sensor_id=0152>"
+curl "http://127.0.0.1:8000/weather/7d/avg?sensor_id=0152"
 ```
 
 ---
 
-## Notes on the sample dataset
+## Notes on time windows and dataset sparsity
 
-The provided sample meteo data appears to be sparse, often containing ~one snapshot per day per sensor (many parameters recorded at the same timestamp).
+The provided sample meteo data is sparse and often contains only a single snapshot per day per sensor.
 As a result:
 
 - A “24h series at 15-minute resolution” may contain only a small number of points.
-- Resampling still works, but buckets will be sparse.
+- Resampling still works, but buckets may be sparse.
 
-To avoid empty windows on historical datasets, the service anchors time windows to the latest timestamp available in the DB, instead of using “now”.
+To avoid empty windows, time windows are **anchored to the latest timestamp in the database**, rather than using the current wall-clock time.
+
+---
+
+## Resetting the database
+
+To start from a clean state:
+
+```bash
+rm -f data/app.db
+```
+
+The database and indexes will be recreated automatically on next startup / ingestion.
+
+---
+
+## Health / readiness
+
+A dedicated `/health` endpoint is not included for this assignment.
+API readiness can be verified via:
+- `/docs`
+- `/weather/current` (after ingesting data)
 
 ---
 
@@ -189,26 +248,16 @@ To avoid empty windows on historical datasets, the service anchors time windows 
 
 Measurements are stored as one row per `(sensor_id, ts, parameter, pt)`:
 
-- Flexible: adding new parameters requires no schema migration
-- Queryable: window queries + per-parameter aggregations are straightforward
-- Deduplication: enforced via a unique index
-
-### Deduplication & UPSERT
-
-The database enforces uniqueness with:
-
-- `UNIQUE(sensor_id, ts, parameter, pt)`
-
-Ingestion performs UPSERT so re-ingesting the same data is safe and idempotent.
+- Flexible: new parameters require no schema migration
+- Queryable: window queries and aggregations are straightforward
+- Deduplication: enforced via a unique constraint + UPSERT semantics
 
 ### Layered structure
 
-- `ingestion/*`: parsing + loading + transformation
+- `ingestion/*`: parsing, validation, transformation
 - `db/*`: persistence primitives only
 - `services/*`: domain logic and aggregation orchestration
 - `api/*`: request/response layer only
-
-This separation keeps the codebase easy to navigate and extend.
 
 ---
 
@@ -218,33 +267,27 @@ This separation keeps the codebase easy to navigate and extend.
 pytest -q
 ```
 
-Suggested test coverage:
-
-- Parser unit tests (JSON → record dict)
-- Repo unit tests (upsert + window query)
-- Service unit tests (windowing + aggregation output shape)
-- One integration test: ingest small subset → query endpoints
+The test suite includes:
+- Ingestion pipeline tests (parse → transform → upsert)
+- Aggregation tests (resampling + averages)
+- API integration tests (ingest + query endpoints)
 
 ---
 
 ## Trade-offs & assumptions
 
-- SQLite is used for simplicity and portability. For production, Postgres is recommended.
-- The sample dataset is relatively small; ingestion uses batch upsert without heavy optimization.
-- Timestamp handling is designed for historical datasets (anchor windows to DB max timestamp).
-- Aggregations use pandas for clarity; for large-scale production, consider server-side aggregation or OLAP storage.
+- SQLite is used for simplicity and portability; Postgres is recommended for production.
+- The dataset is relatively small; ingestion uses batch upsert without heavy optimization.
+- Aggregations use pandas for clarity; for large-scale production, consider SQL/window functions or pre-aggregations.
 
 ---
 
-## If I had 3 months instead of 8 hours
+## If I had more time
 
-- Use Postgres + TIMESTAMPTZ columns and schema migrations (Alembic)
-- Add authentication/authorization for ingestion endpoints
-- Stream ingestion via object storage (S3/GCS) + queue (Kafka/PubSub)
-- Add observability: structured logs, metrics, tracing
-- Add caching for “current” and popular windows
-- Improve API design: parameter discovery endpoints, versioning, pagination
-- Improve aggregation strategy for high-frequency data (SQL window functions / pre-aggregations)
-- Expand test suite with integration + property-based tests + load tests
-
----
+- Postgres + Alembic migrations
+- Authentication/authorization for ingestion endpoints
+- Stream ingestion via object storage + queue
+- Observability: structured logs, metrics, tracing
+- Caching for “current” and popular windows
+- Parameter discovery endpoints and API versioning
+- Load testing and property-based tests
