@@ -2,7 +2,7 @@
 ingest_router.py - API routes for bulk ingestion.
 
 This provides:
-- /ingest/meteo : triggers ingestion of a directory on disk (assignment demo helper)
+- /ingest/meteo : triggers ingestion of a directory on disk (local/demo helper)
 - /ingest/batch : bulk ingest raw meteo payloads via HTTP
 """
 
@@ -36,7 +36,7 @@ def ingest_meteo(
 
     Notes
     -----
-    - This is designed for local/demo usage in the assignment.
+    - This is designed for local/demo usage.
     - In production, you'd ingest via HTTP payloads, file upload, object storage, or a message queue.
     """
     # Guardrail: only allow ingesting from within DATA_ROOT (default: data/raw)

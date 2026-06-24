@@ -110,7 +110,7 @@ def _compute_window(
     Horizon semantics
     -----------------
     - "24h":
-        For this assignment's sample data (often 1 snapshot/day), a strict
+        For the sample data (often 1 snapshot/day), a strict
         end-24h window can be empty due to seconds-level jitter. We therefore use
         a *calendar-day window* that captures the previous day and current day
         around the latest available snapshot.

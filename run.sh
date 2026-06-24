@@ -13,7 +13,7 @@ DATA_ROOT=${DATA_ROOT:-./data/raw}
 API_HOST=${API_HOST:-0.0.0.0}
 API_PORT=${API_PORT:-8000}
 
-echo "Starting Source.ag assignment app"
+echo "Starting sensor measurements API app"
 echo "Environment : $APP_ENV"
 echo "DB path     : $DB_PATH"
 echo "Data root   : $DATA_ROOT"

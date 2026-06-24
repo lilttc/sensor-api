@@ -70,3 +70,6 @@ htmlcov/
 
 # Ignore local repository bundle
 source-ag-assignment.bundle
+
+# Ignore local VS Code/worktree artifacts
+.cursor/

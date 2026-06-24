@@ -3,7 +3,7 @@
 Backend service that ingests greenhouse **meteo (external weather)** sensor snapshots from JSON data,
 stores them in **SQLite**, and exposes aggregated views via a **FastAPI** API.
 
-Built for the **Source.ag Sensor Measurements API assignment**.
+A backend service for ingesting and serving greenhouse sensor data.
 
 ---
 
@@ -117,13 +117,13 @@ Docker support is provided for easy evaluation.
 ### Option A: Docker build & run (works without docker-compose)
 
 ```bash
-docker build -t source-ag-assignment:latest .
+docker build -t sensor-measurements-api:latest .
 
 docker run --rm -p 8000:8000 \
   -e DB_PATH=./data/app.db \
   -e DATA_ROOT=./data/raw \
   -v "$(pwd)/data:/app/data" \
-  source-ag-assignment:latest
+  sensor-measurements-api:latest
 ```
 
 Then open:
@@ -235,8 +235,7 @@ The database and indexes will be recreated automatically on next startup / inges
 
 ## Health / readiness
 
-A dedicated `/health` endpoint is not included for this assignment.
-API readiness can be verified via:
+A dedicated `/health` endpoint is not included. API readiness can be verified via:
 - `/docs`
 - `/weather/current` (after ingesting data)
 

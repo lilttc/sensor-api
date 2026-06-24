@@ -99,15 +99,7 @@ def ingest_meteo_dir_to_db(
 
                 for r in records:
                     # wide_record_to_measurements may return a generator -> list() for safety
-                    batch.extend(
-                        list(
-                            wide_record_to_measurements(
-                                r,
-                                sensor_id=r["sensor_id"],
-                                source_file=r.get("source_file"),
-                            )
-                        )
-                    )
+                    batch.extend(list(wide_record_to_measurements(r)))
 
                 if len(batch) >= batch_size:
                     attempted_rows += bulk_upsert_measurements(session, batch)

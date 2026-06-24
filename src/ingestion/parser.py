@@ -1,5 +1,5 @@
 """
-parser.py - Pure-Python parsers for Source.ag meteo JSON sample files.
+parser.py - Pure-Python parsers for meteo JSON sample files.
 
 This module intentionally avoids pandas to keep ingestion lightweight and
 easy to reason about. The input JSON files are small, and their structure

@@ -12,7 +12,7 @@ SQLModel instances or plain Python collections.
 
 SQLite note
 -----------
-In this assignment we store timestamps in SQLite and they are represented
+Timestamps are stored in SQLite TEXT and represented
 as TEXT in the database (e.g. "2021-05-01 01:52:50"). To keep time-window
 filtering reliable, this module normalizes datetime boundaries into the
 same sortable string format when querying time windows.
